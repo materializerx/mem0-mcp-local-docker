@@ -31,36 +31,28 @@ The official server connects to Mem0's cloud API via `MemoryClient`. This fork r
 
 ## Setup
 
-### 1. Start the backing services
-
-Ensure your Docker Compose stack is running with PostgreSQL (pgvector) and Neo4j containers. These should be configured with `restart: unless-stopped` so they survive VM reboots.
-
-### 2. Create `.env`
+### 1. Clone and configure
 
 ```bash
+git clone https://github.com/materializerx/mem0-mcp-local-docker.git
+cd mem0-mcp-local-docker
 cp .env.example .env
 ```
 
-Required variables:
+Edit `.env` and set your `OPENAI_API_KEY`. The other defaults match the included `docker-compose.yml`.
 
-```env
-OPENAI_API_KEY=sk-...
+### 2. Start backing services
 
-# PostgreSQL (pgvector)
-POSTGRES_HOST=localhost
-POSTGRES_PORT=8432
-POSTGRES_DB=postgres
-POSTGRES_USER=postgres
-POSTGRES_PASSWORD=postgres
+```bash
+docker compose up -d
+```
 
-# Neo4j (graph store)
-NEO4J_URI=bolt://localhost:8687
-NEO4J_USERNAME=neo4j
-NEO4J_PASSWORD=mem0graph
+This starts PostgreSQL (pgvector) on port `8432` and Neo4j on port `8687`. Both are configured with `restart: unless-stopped` so they survive reboots.
 
-# Mem0 defaults
-MEM0_DEFAULT_USER_ID=sisyphus
-MEM0_ENABLE_GRAPH_DEFAULT=true
+Wait for healthy status:
+
+```bash
+docker compose ps
 ```
 
 ### 3. Install dependencies
