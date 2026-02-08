@@ -1,52 +1,108 @@
-# Mem0 MCP Server
+# mem0-mcp-local-docker
 
-[![PyPI version](https://img.shields.io/pypi/v/mem0-mcp-server.svg)](https://pypi.org/project/mem0-mcp-server/) [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE) [![smithery badge](https://smithery.ai/badge/@mem0ai/mem0-memory-mcp)](https://smithery.ai/server/@mem0ai/mem0-memory-mcp)
+A self-hosted [Mem0](https://mem0.ai) MCP server adapted from the [official mem0-mcp](https://github.com/mem0ai/mem0-mcp) to run entirely on your own infrastructure using Docker containers (PostgreSQL with pgvector + Neo4j).
 
-`mem0-mcp-server` wraps the official [Mem0](https://mem0.ai) Memory API as a Model Context Protocol (MCP) server so any MCP-compatible client (Claude Desktop, Cursor, custom agents) can add, search, update, and delete long-term memories.
+The official server connects to Mem0's cloud API via `MemoryClient`. This fork replaces it with the local `Memory` class, pointing to your own Postgres and Neo4j instances.
 
-## Tools
+## Prerequisites
 
-The server exposes the following tools to your LLM:
+- Docker & Docker Compose
+- Python >= 3.10
+- An OpenAI API key (used by Mem0 internally for embeddings and LLM)
 
-| Tool                  | Description                                                                       |
-| --------------------- | --------------------------------------------------------------------------------- |
-| `add_memory`          | Save text or conversation history (or explicit message objects) for a user/agent. |
-| `search_memories`     | Semantic search across existing memories (filters + limit supported).             |
-| `get_memories`        | List memories with structured filters and pagination.                             |
-| `get_memory`          | Retrieve one memory by its `memory_id`.                                           |
-| `update_memory`       | Overwrite a memory's text once the user confirms the `memory_id`.                 |
-| `delete_memory`       | Delete a single memory by `memory_id`.                                            |
-| `delete_all_memories` | Bulk delete all memories in the confirmed scope (user/agent/app/run).             |
-| `delete_entities`     | Delete a user/agent/app/run entity (and its memories).                            |
-| `list_entities`       | Enumerate users/agents/apps/runs stored in Mem0.                                  |
+## Architecture
 
-All responses are JSON strings returned directly from the Mem0 API.
-
-## Usage Options
-
-There are three ways to use the Mem0 MCP Server:
-
-1. **Python Package** - Install and run locally using `uvx` with any MCP client
-2. **Docker** - Containerized deployment that creates an `/mcp` HTTP endpoint
-3. **Smithery** - Remote hosted service for managed deployments
-
-## Quick Start
-
-### Installation
-
-```bash
-uv pip install mem0-mcp-server
+```
+┌─────────────────────────────────┐
+│  MCP Client (OpenCode, Claude)  │
+└──────────────┬──────────────────┘
+               │ stdio
+┌──────────────▼──────────────────┐
+│     mem0-mcp-server (Python)    │
+│  src/mem0_mcp_server/server.py  │
+└──┬───────────────────────────┬──┘
+   │                           │
+┌──▼─────────────┐  ┌─────────▼──────────┐
+│  PostgreSQL    │  │      Neo4j         │
+│  (pgvector)    │  │  (graph store)     │
+│  port: 8432    │  │  port: 8687        │
+└────────────────┘  └────────────────────┘
 ```
 
-Or with pip:
+## Setup
+
+### 1. Start the backing services
+
+Ensure your Docker Compose stack is running with PostgreSQL (pgvector) and Neo4j containers. These should be configured with `restart: unless-stopped` so they survive VM reboots.
+
+### 2. Create `.env`
 
 ```bash
-pip install mem0-mcp-server
+cp .env.example .env
 ```
 
-### Client Configuration
+Required variables:
 
-Add this configuration to your MCP client:
+```env
+OPENAI_API_KEY=sk-...
+
+# PostgreSQL (pgvector)
+POSTGRES_HOST=localhost
+POSTGRES_PORT=8432
+POSTGRES_DB=postgres
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=postgres
+
+# Neo4j (graph store)
+NEO4J_URI=bolt://localhost:8687
+NEO4J_USERNAME=neo4j
+NEO4J_PASSWORD=mem0graph
+
+# Mem0 defaults
+MEM0_DEFAULT_USER_ID=sisyphus
+MEM0_ENABLE_GRAPH_DEFAULT=true
+```
+
+### 3. Install dependencies
+
+```bash
+uv sync
+# or
+pip install -e .
+```
+
+### 4. Run the server
+
+```bash
+uv run mem0-mcp-server
+# or
+python -m mem0_mcp_server.server
+```
+
+The server runs over **stdio** by default (for MCP client integration).
+
+## MCP Client Configuration
+
+### OpenCode (`oh-my-opencode.json`)
+
+```json
+{
+  "mcp": {
+    "mem0": {
+      "type": "stdio",
+      "command": "/path/to/mem0-mcp/.venv/bin/python",
+      "args": ["-m", "mem0_mcp_server.server"],
+      "env": {
+        "OPENAI_API_KEY": "sk-...",
+        "MEM0_DEFAULT_USER_ID": "sisyphus",
+        "MEM0_ENABLE_GRAPH_DEFAULT": "true"
+      }
+    }
+  }
+}
+```
+
+### Claude Desktop
 
 ```json
 {
@@ -55,161 +111,40 @@ Add this configuration to your MCP client:
       "command": "uvx",
       "args": ["mem0-mcp-server"],
       "env": {
-        "MEM0_API_KEY": "m0-...",
-        "MEM0_DEFAULT_USER_ID": "your-handle"
+        "OPENAI_API_KEY": "sk-...",
+        "MEM0_DEFAULT_USER_ID": "your-handle",
+        "MEM0_ENABLE_GRAPH_DEFAULT": "true"
       }
     }
   }
 }
 ```
 
-### Test with the Python Agent
+## Tools
 
-<details>
-<summary><strong>Click to expand: Test with the Python Agent</strong></summary>
+| Tool | Description |
+|------|-------------|
+| `add_memory` | Store a preference, fact, or conversation snippet |
+| `search_memories` | Semantic search over existing memories |
+| `get_memories` | List memories with filters and pagination |
+| `get_memory` | Fetch a single memory by ID |
+| `update_memory` | Overwrite a memory's text |
+| `delete_memory` | Delete a single memory |
+| `delete_all_memories` | Bulk delete all memories in a scope |
+| `delete_entities` | Remove a user/agent/run and cascade-delete its memories |
 
-To test the server immediately, use the included Pydantic AI agent:
+## Key Differences from Official
 
-```bash
-# Install the package
-pip install mem0-mcp-server
-# Or with uv
-uv pip install mem0-mcp-server
-
-# Set your API keys
-export MEM0_API_KEY="m0-..."
-export OPENAI_API_KEY="sk-openai-..."
-
-# Clone and test with the agent
-git clone https://github.com/mem0ai/mem0-mcp.git
-cd mem0-mcp-server
-python example/pydantic_ai_repl.py
-```
-
-**Using different server configurations:**
-
-```bash
-# Use with Docker container
-export MEM0_MCP_CONFIG_PATH=example/docker-config.json
-export MEM0_MCP_CONFIG_SERVER=mem0-docker
-python example/pydantic_ai_repl.py
-
-# Use with Smithery remote server
-export MEM0_MCP_CONFIG_PATH=example/config-smithery.json
-export MEM0_MCP_CONFIG_SERVER=mem0-memory-mcp
-python example/pydantic_ai_repl.py
-```
-
-</details>
-
-## What You Can Do
-
-The Mem0 MCP server enables powerful memory capabilities for your AI applications:
-
-- Remember that I'm allergic to peanuts and shellfish - Add new health information to memory
-- Store these trial parameters: 200 participants, double-blind, placebo-controlled study - Save research data
-- What do you know about my dietary preferences? - Search and retrieve all food-related memories
-- Update my project status: the mobile app is now 80% complete - Modify existing memory with new info
-- Delete all memories from 2023, I need a fresh start - Bulk remove outdated memories
-- Show me everything I've saved about the Phoenix project - List all memories for a specific topic
-
-## Configuration
-
-### Environment Variables
-
-- `MEM0_API_KEY` (required) – Mem0 platform API key.
-- `MEM0_DEFAULT_USER_ID` (optional) – default `user_id` injected into filters and write requests (defaults to `mem0-mcp`).
-- `MEM0_ENABLE_GRAPH_DEFAULT` (optional) – Enable graph memories by default (defaults to `false`).
-- `MEM0_MCP_AGENT_MODEL` (optional) – default LLM for the bundled agent example (defaults to `openai:gpt-4o-mini`).
-
-## Advanced Setup
-
-<details>
-<summary><strong>Click to expand: Docker, Smithery, and Development</strong></summary>
-
-### Docker Deployment
-
-To run with Docker:
-
-1. Build the image:
-
-   ```bash
-   docker build -t mem0-mcp-server .
-   ```
-
-2. Run the container:
-
-   ```bash
-   docker run --rm -d \
-     --name mem0-mcp \
-     -e MEM0_API_KEY=m0-... \
-     -p 8080:8081 \
-     mem0-mcp-server
-   ```
-
-3. Monitor the container:
-
-   ```bash
-   # View logs
-   docker logs -f mem0-mcp
-
-   # Check status
-   docker ps
-   ```
-
-### Running with Smithery Remote Server
-
-To connect to a Smithery-hosted server:
-
-1. Install the MCP server (Smithery dependencies are now bundled):
-
-   ```bash
-   pip install mem0-mcp-server
-   ```
-
-2. Configure MCP client with Smithery:
-   ```json
-   {
-     "mcpServers": {
-       "mem0-memory-mcp": {
-         "command": "npx",
-         "args": [
-           "-y",
-           "@smithery/cli@latest",
-           "run",
-           "@mem0ai/mem0-memory-mcp",
-           "--key",
-           "your-smithery-key",
-           "--profile",
-           "your-profile-name"
-         ],
-         "env": {
-           "MEM0_API_KEY": "m0-..."
-         }
-       }
-     }
-   }
-   ```
-
-### Development Setup
-
-Clone and run from source:
-
-```bash
-git clone https://github.com/mem0ai/mem0-mcp.git
-cd mem0-mcp-server
-pip install -e ".[dev]"
-
-# Run locally
-mem0-mcp-server
-
-# Or with uv
-uv sync
-uv run mem0-mcp-server
-```
-
-</details>
+| Aspect | Official (`mem0ai/mem0-mcp`) | This Fork |
+|--------|------------------------------|-----------|
+| Backend | Mem0 Cloud API (`MemoryClient`) | Local `Memory` class |
+| Vector Store | Mem0 Cloud | Self-hosted PostgreSQL + pgvector |
+| Graph Store | Mem0 Cloud | Self-hosted Neo4j |
+| LLM | Mem0 Cloud | OpenAI API (configurable model) |
+| Embedder | Mem0 Cloud | OpenAI `text-embedding-3-small` |
+| Auth | `MEM0_API_KEY` | `OPENAI_API_KEY` + DB credentials |
+| `list_entities` | Supported | Not available (returns error) |
 
 ## License
 
-[Apache License 2.0](https://github.com/mem0ai/mem0-mcp/blob/main/LICENSE)
+[Apache License 2.0](LICENSE)
