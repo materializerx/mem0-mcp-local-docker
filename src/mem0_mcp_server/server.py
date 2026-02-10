@@ -112,10 +112,12 @@ def _mem0_call(func, *args, **kwargs):
             },
             ensure_ascii=False,
         )
+    if isinstance(result, list):
+        result = {"results": result}
     return json.dumps(result, ensure_ascii=False)
 
 
-def _resolve_settings(ctx: Context | None) -> tuple[str, bool]:
+def _resolve_settings(ctx: Context[Any, Any, Any] | None) -> tuple[str, bool]:
     session_config = getattr(ctx, "session_config", None)
     default_user = _config_value(session_config, "default_user_id") or ENV_DEFAULT_USER_ID
     enable_graph_default = _config_value(session_config, "enable_graph_default")
@@ -239,7 +241,7 @@ def create_server() -> FastMCP:
                 description="Set true only if the caller explicitly wants Mem0 graph memory.",
             ),
         ] = None,
-        ctx: Context | None = None,
+        ctx: Context[Any, Any, Any] | None = None,
     ) -> str:
         """Write durable information to Mem0."""
 
@@ -308,7 +310,7 @@ def create_server() -> FastMCP:
                 description="Set true only when the user explicitly wants graph-derived memories.",
             ),
         ] = None,
-        ctx: Context | None = None,
+        ctx: Context[Any, Any, Any] | None = None,
     ) -> str:
         """Semantic search against existing memories."""
 
@@ -359,7 +361,7 @@ def create_server() -> FastMCP:
                 description="Set true only if the caller explicitly wants graph-derived memories.",
             ),
         ] = None,
-        ctx: Context | None = None,
+        ctx: Context[Any, Any, Any] | None = None,
     ) -> str:
         """List memories via structured filters or pagination."""
 
@@ -422,7 +424,7 @@ def create_server() -> FastMCP:
         run_id: Annotated[
             Optional[str], Field(default=None, description="Optional run scope to delete.")
         ] = None,
-        ctx: Context | None = None,
+        ctx: Context[Any, Any, Any] | None = None,
     ) -> str:
         """Bulk-delete every memory in the confirmed scope."""
 
@@ -439,7 +441,7 @@ def create_server() -> FastMCP:
         return _mem0_call(client.delete_all, **payload)
 
     @server.tool(description="List which users/agents/apps/runs currently hold memories.")
-    def list_entities(ctx: Context | None = None) -> str:
+    def list_entities(ctx: Context[Any, Any, Any] | None = None) -> str:
         """List users/agents/apps/runs with stored memories."""
 
         _resolve_settings(ctx)
@@ -454,7 +456,7 @@ def create_server() -> FastMCP:
     @server.tool(description="Fetch a single memory once you know its memory_id.")
     def get_memory(
         memory_id: Annotated[str, Field(description="Exact memory_id to fetch.")],
-        ctx: Context | None = None,
+        ctx: Context[Any, Any, Any] | None = None,
     ) -> str:
         """Retrieve a single memory once the user has picked an exact ID."""
 
@@ -466,7 +468,7 @@ def create_server() -> FastMCP:
     def update_memory(
         memory_id: Annotated[str, Field(description="Exact memory_id to overwrite.")],
         text: Annotated[str, Field(description="Replacement text for the memory.")],
-        ctx: Context | None = None,
+        ctx: Context[Any, Any, Any] | None = None,
     ) -> str:
         """Overwrite an existing memory’s text after the user confirms the exact memory_id."""
 
@@ -477,7 +479,7 @@ def create_server() -> FastMCP:
     @server.tool(description="Delete one memory after the user confirms its memory_id.")
     def delete_memory(
         memory_id: Annotated[str, Field(description="Exact memory_id to delete.")],
-        ctx: Context | None = None,
+        ctx: Context[Any, Any, Any] | None = None,
     ) -> str:
         """Delete a memory once the user explicitly confirms the memory_id to remove."""
 
@@ -501,7 +503,7 @@ def create_server() -> FastMCP:
         run_id: Annotated[
             Optional[str], Field(default=None, description="Delete this run and its memories.")
         ] = None,
-        ctx: Context | None = None,
+        ctx: Context[Any, Any, Any] | None = None,
     ) -> str:
         """Delete a user/agent/app/run (and its memories) once the user confirms the scope."""
 
